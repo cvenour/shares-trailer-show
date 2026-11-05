@@ -19,7 +19,7 @@
       through easy, done, call and mail to Odyssey Trust.
     Phrase 3, Kylo Ren (chords 9 to 12): the Cenovus shares ride a red,
       crackling blade through hard, done, 30 days and steps.
-    After the twelfth chord, "Your steps from here" builds up while the
+    After the twelfth chord, "The lawyer’s steps from here" builds up while the
     music plays on. Then the music fades out and Play again appears.
 
   Everything moves by the music's own clock, so the pictures can't drift
@@ -106,7 +106,7 @@
   .cap ol li .n { position: absolute; left: 0; top: 0.2em; width: 21px; height: 21px; border-radius: 50%;
                   border: 1.5px solid var(--accent); font-size: 14px; line-height: 21px; text-align: center; color: var(--accent); }
 
-  /* Your steps from here */
+  /* The lawyer’s steps from here */
   .hold { position: absolute; opacity: 0; visibility: hidden; }
   #done-label { left: 80px; top: 168px; font-size: 28px; font-weight: 500; color: var(--gold); }
   #done-list { left: 80px; top: 486px; width: 370px; margin: 0; padding: 0; list-style: none; }
@@ -160,7 +160,7 @@
   <div class="header ph1"><div class="tag">Rey</div><div class="title">Where Mom and Dad’s shares came from</div></div>
   <div class="header ph2"><div class="tag">Finn</div><div class="title">What’s left to do: Ovintiv</div></div>
   <div class="header ph3"><div class="tag">Kylo Ren</div><div class="title">What’s left to do: Cenovus</div></div>
-  <div class="header ph4 big"><div class="tag">Rey and Han Solo</div><div class="title">Your steps from here</div></div>
+  <div class="header ph4 big"><div class="tag">Rey and Han Solo</div><div class="title">The lawyer’s steps from here</div></div>
 
   <div id="year">2002</div>
 
@@ -265,7 +265,7 @@
     </ol>
   </div>
 
-  <!-- After the twelfth chord: your steps from here. data-step says which
+  <!-- After the twelfth chord: the lawyer’s steps from here. data-step says which
        part of the slower music each block comes in on (see HOLD_STEPS). -->
   <div class="hold" id="done-label" data-step="0">Done so far</div>
   <ul class="hold" id="done-list" data-step="0">
@@ -276,7 +276,7 @@
   </ul>
   <div class="hold step ph2" data-step="1" style="top: 200px">
     <h3>1. Odyssey <span class="tag">Ovintiv shares, no deadline</span></h3>
-    <p>You call Odyssey Trust. The questions are on the call sheet.</p>
+    <p>The lawyer calls Odyssey Trust. The questions are on the call sheet.</p>
     <p>Then I sign <i>→</i> both Ovintiv envelopes go by registered mail <i>→</i> Odyssey sells the shares and mails a US dollar cheque.</p>
   </div>
   <div class="hold step ph3" data-step="2" style="top: 430px">
@@ -287,7 +287,7 @@
   <div class="hold step ph3" data-step="3" style="top: 660px">
     <h3>3. Mom’s 30 days <span class="tag">Deadline: 30 days from Computershare’s letter</span></h3>
     <p>The worst part. Ask for Mom’s bond quote only when everything else is ready. Mail time uses some of the 30 days.</p>
-    <p>The new Waiver comes <i>→</i> you check it <i>→</i> I swear it before a notary with a seal <i>→</i> I get the bond cheque <i>→</i> the envelope goes.</p>
+    <p>The new Waiver comes <i>→</i> the lawyer checks it <i>→</i> I swear it before a notary with a seal <i>→</i> I get the bond cheque <i>→</i> the envelope goes.</p>
   </div>
 
   <div id="intro">
@@ -302,7 +302,7 @@
     <button class="jump" type="button" data-part="0">History</button>
     <button class="jump" type="button" data-part="1">Ovintiv</button>
     <button class="jump" type="button" data-part="2">Cenovus</button>
-    <button class="jump" type="button" data-part="3">Your steps</button>
+    <button class="jump" type="button" data-part="3">The lawyer’s steps</button>
     <input type="range" min="0" max="90" step="0.01" value="0" aria-label="Position in the show">
     <span class="time">0:00 / 0:00</span>
   </div>
@@ -336,14 +336,14 @@
     [52.65, 56.60],  // 12  Cenovus: steps    (E)
   ];
 
-  // After the twelfth chord ends, "Your steps from here" builds up and the
+  // After the twelfth chord ends, "The lawyer’s steps from here" builds up and the
   // music keeps playing for HOLD_SECONDS. Then it fades out over
   // FADE_OUT_SECONDS and stops. Set FADE_OUT_SECONDS to null to let the
   // trailer play to its end.
   const HOLD_SECONDS = 30;
   const FADE_OUT_SECONDS = 3;
 
-  // When each part of "Your steps from here" comes in, in seconds from the
+  // When each part of "The lawyer’s steps from here" comes in, in seconds from the
   // start of the trailer: done so far, step 1, step 2, step 3. They sit on
   // the bass changes in the slower music after the twelfth chord.
   const HOLD_STEPS = [56.75, 60.45, 64.00, 67.75];
@@ -402,7 +402,7 @@
   const MOM = 960, DAD = 1360, ROW1 = 300, ROW2 = 615, TL_Y = 846;   // phrase 1
   const BLUE_Y = 250, RED_Y = 720, HILT = 120, TIP = 1500;            // phrases 2 and 3
   const STOPS = [360, 680, 1000, 1320];
-  const ROUTE_X = 560, ROUTE_YS = [255, 490, 725];                    // your steps from here
+  const ROUTE_X = 560, ROUTE_YS = [255, 490, 725];                    // the lawyer’s steps from here
   const YEARS = [2002, 2005, 2009, 2020];
 
 
@@ -577,7 +577,7 @@
     // Chord 12, step 2: Dad's envelope goes to Computershare.
     groupMove(dadC, N(11) + 1.2, { cx: TIP, cy: RED_Y, sp: 1.35, r: 1.2, dur: 0.9, delay: 0.5 });
 
-    // Your steps from here: each cluster settles by its step, dim until the
+    // The lawyer’s steps from here: each cluster settles by its step, dim until the
     // step comes in.
     groupMove(momO, H0, { cx: ROUTE_X, cy: ROUTE_YS[0], sp: 3.3, n: O_TOTAL, r: 2.3, a: 0.35, dur: 1.8, delay: 0.5 });
     groupMove(dadO, H0, { cx: ROUTE_X, cy: ROUTE_YS[0], sp: 3.3, offset: 118, n: O_TOTAL, r: 2.3, a: 0.35, dur: 1.8, delay: 0.5 });
@@ -746,7 +746,7 @@
     .attr('d', d3.arc().innerRadius(DAYS_R0).outerRadius(DAYS_R0 + 10).padAngle(0.025)).attr('fill', HEX.red);
   const daysText = label(gDays, -0.707 * (DAYS_R0 + 10) - 10, -0.707 * (DAYS_R0 + 10) - 6, '30 days', 'node red', 'end');
 
-  // ----- Your steps from here -----
+  // ----- The lawyer’s steps from here -----
   const gH = svg.append('g');
   const routeGlow = gH.append('line').attr('x1', ROUTE_X).attr('x2', ROUTE_X).attr('y1', 200)
     .attr('stroke', 'url(#route-grad)').attr('stroke-width', 8).attr('filter', 'url(#blur5)').attr('opacity', 0.6);
@@ -1095,7 +1095,7 @@
       daysText.attr('opacity', shown(t, N(10) + 0.5, H0 + 0.3, 0.4, 0.4).toFixed(3));
     }
 
-    // Your steps from here.
+    // The lawyer’s steps from here.
     if (vH > 0) {
       const y2 = (200 + 590 * EASE(ramp(t, H0 + 0.3, 1.6))).toFixed(1);
       route.attr('y2', y2);
