@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mom and Dad's shares, in D3 (with music)</title>
+<!--
+  Just-for-fun D3 version of ../presentation/brian-meeting.html, timed to the
+  opening of the Force Awakens trailer. The chord timings come from
+  ../presentation-synced/brian-meeting-synced.html.
+
+  Every dot is one share. Press Start and the music plays.
+
+    Phrase 1, Rey (chords 1 to 4): where Mom and Dad's shares came from.
+      The dots gather into Encana (2002), split two for one (2005), copy
+      themselves into Cenovus (2009), and merge five into one as Ovintiv
+      (2020).
+    Phrase 2, Finn (chords 5 to 8): the Ovintiv shares ride a blue blade
+      through easy, done, call and mail to Odyssey Trust.
+    Phrase 3, Kylo Ren (chords 9 to 12): the Cenovus shares ride a red,
+      crackling blade through hard, done, 30 days and steps.
+    After the twelfth chord, "Your steps from here" builds up while the
+    music plays on. Then the music fades out and Play again appears.
+
+  Everything moves by the music's own clock, so the pictures can't drift
+  away from the chords.
+
+  To change the timings, edit the TIMINGS block at the top of the script.
+  To retime by ear, open the browser console, press Start and tap the T key
+  on each chord. Each tap logs the time. After twelve taps, the console
+  prints a list you can paste into NOTES.
+  To look at one moment without music, add ?t= and a time in seconds to the
+  address, for example brian-meeting-d3.html?t=30
+
+  The words for each chord are in the HTML below, so they're easy to edit.
+
+  Library: lib/d3.min.js is D3 version 7.9.2, from d3js.org. Everything is
+  in this folder, so the page works offline.
+-->
+<script src="lib/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #03050b;
+    --text: #e9eef7;
+    --dim: #98a4b7;
+    --gold: #f4c269;
+    --blue: #6cc6ff;
+    --red: #ff5a4e;
+    --warm: #f3e4c6;
+  }
+
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+  body { font-family: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--text); }
+
+  /* Layers, back to front: stars, drawings, share dots, words. */
+  #sky, #dots { position: fixed; left: 0; top: 0; display: block; pointer-events: none; }
+  #sky { z-index: 0; }
+  #art { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 1; overflow: visible; pointer-events: none; }
+  #dots { z-index: 2; }
+  #hud { position: fixed; left: 0; top: 0; width: 1600px; height: 900px; z-index: 3; transform-origin: 0 0; pointer-events: none; }
+  #hud * { text-shadow: 0 0 12px rgba(3, 5, 11, 0.95), 0 0 3px rgba(3, 5, 11, 0.9); }
+
+  .ph1 { --accent: var(--gold); }
+  .ph2 { --accent: var(--blue); }
+  .ph3 { --accent: var(--red); }
+  .ph4 { --accent: var(--warm); }
+
+  /* Words drawn in the SVG */
+  #art text { font-family: inherit; paint-order: stroke; stroke: #03050b; stroke-width: 5px; stroke-linejoin: round; stroke-opacity: 0.85; }
+  #art .row { font-size: 30px; font-weight: 500; }
+  #art .rowsub { font-size: 19px; fill: var(--dim); }
+  #art .gold { fill: var(--gold); }
+  #art .blue { fill: var(--blue); }
+  #art .red { fill: var(--red); }
+  #art .num { font-size: 23px; fill: var(--text); font-variant-numeric: tabular-nums; }
+  #art .num .who { fill: var(--dim); }
+  #art .est { font-size: 16px; fill: var(--dim); font-style: italic; }
+  #art .node { font-size: 21px; }
+  #art .who2 { font-size: 16px; fill: var(--dim); }
+  #art .axis text { font-size: 18px; fill: var(--dim); }
+  #art .pct { font-size: 54px; font-weight: 300; fill: var(--text); font-variant-numeric: tabular-nums; }
+  #art .pctsub { font-size: 17px; fill: var(--dim); }
+
+  /* Phrase headings, top left */
+  .header { position: absolute; left: 80px; top: 38px; opacity: 0; }
+  .header .tag { font-size: 17px; letter-spacing: 0.16em; color: var(--accent); }
+  .header .title { font-size: 30px; font-weight: 500; margin-top: 2px; }
+  .header.big .title { font-size: 42px; }
+
+  /* The year in phrase 1 */
+  #year { position: absolute; left: 72px; top: 112px; font-size: 136px; font-weight: 200; line-height: 1;
+          color: var(--gold); font-variant-numeric: tabular-nums; opacity: 0; }
+
+  /* One caption per chord */
+  .cap { position: absolute; width: 540px; opacity: 0; visibility: hidden; }
+  .cap.ph1 { width: 560px; }
+  .cap h2 { margin: 0 0 12px; font-size: 40px; font-weight: 500; line-height: 1.1; }
+  .cap h2 .co { color: var(--accent); }
+  .cap ul, .cap ol { list-style: none; margin: 0; padding: 0; }
+  .cap li { position: relative; padding-left: 30px; margin: 0 0 9px; font-size: 26px; line-height: 1.32; }
+  .cap ul li::before { content: ""; position: absolute; left: 6px; top: 0.56em; width: 8px; height: 8px;
+                       border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .cap ul.checks li::before { display: none; }
+  .cap svg.tick { position: absolute; left: -2px; top: 0.16em; width: 24px; height: 24px; overflow: visible; }
+  .cap svg.tick path { fill: none; stroke: var(--accent); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; }
+  .cap ol li .n { position: absolute; left: 0; top: 0.2em; width: 21px; height: 21px; border-radius: 50%;
+                  border: 1.5px solid var(--accent); font-size: 14px; line-height: 21px; text-align: center; color: var(--accent); }
+
+  /* Your steps from here */
+  .hold { position: absolute; opacity: 0; visibility: hidden; }
+  #done-label { left: 80px; top: 168px; font-size: 28px; font-weight: 500; color: var(--gold); }
+  #done-list { left: 80px; top: 486px; width: 370px; margin: 0; padding: 0; list-style: none; }
+  #done-list li { font-size: 20px; line-height: 1.36; margin: 0 0 10px; }
+  #done-list .k { color: var(--gold); }
+  .step { left: 660px; width: 880px; }
+  .step h3 { margin: 0 0 8px; font-size: 31px; font-weight: 500; color: var(--accent); }
+  .step h3 .tag { font-size: 18px; font-weight: 400; color: var(--dim); margin-left: 14px; letter-spacing: 0.02em; }
+  .step p { margin: 0 0 6px; font-size: 22px; line-height: 1.42; }
+  .step i { font-style: normal; color: var(--accent); padding: 0 5px; }
+
+  /* Start screen and buttons */
+  #intro { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; display: flex; flex-direction: column;
+           align-items: center; justify-content: center; text-align: center; transition: opacity 0.6s ease; }
+  #intro.gone { opacity: 0; visibility: hidden; transition: opacity 0.6s ease, visibility 0s 0.6s; }
+  #intro .kicker { font-size: 22px; letter-spacing: 0.2em; color: var(--gold); }
+  #intro h1 { margin: 14px 0 44px; font-size: 52px; font-weight: 300; }
+  #intro .note { margin-top: 26px; font-size: 18px; color: var(--dim); }
+  .btn { pointer-events: auto; font: inherit; font-size: 30px; letter-spacing: 0.04em; color: #eaf6ff; cursor: pointer;
+         background: rgba(20, 60, 110, 0.35); border: 1.5px solid rgba(108, 198, 255, 0.85); border-radius: 999px;
+         padding: 12px 48px 13px; box-shadow: 0 0 18px rgba(108, 198, 255, 0.45), inset 0 0 12px rgba(108, 198, 255, 0.25); }
+  .btn:hover, .btn:focus-visible { background: rgba(40, 100, 170, 0.5); outline: none;
+         box-shadow: 0 0 30px rgba(108, 198, 255, 0.75), inset 0 0 14px rgba(108, 198, 255, 0.35); }
+  #again { position: absolute; right: 70px; top: 46px; font-size: 24px; padding: 10px 34px 11px; }
+  #again[hidden] { display: none; }
+  #pause { position: absolute; right: 40px; bottom: 32px; font-size: 20px; padding: 8px 28px 9px; opacity: 0.55; }
+  #pause:hover, #pause:focus-visible, #pause.on { opacity: 1; }
+  #pause[hidden] { display: none; }
+  /* Scrub bar and section buttons, bottom left */
+  #scrub { position: absolute; left: 50px; right: 200px; bottom: 34px; height: 40px; pointer-events: auto;
+           display: flex; align-items: center; gap: 12px; opacity: 0.5; transition: opacity 0.3s ease; }
+  #scrub:hover, #scrub:focus-within, #scrub.on { opacity: 1; }
+  #scrub[hidden] { display: none; }
+  #scrub .jump { font: inherit; font-size: 17px; color: #cfe6ff; background: rgba(20, 60, 110, 0.3); cursor: pointer;
+                 border: 1px solid rgba(108, 198, 255, 0.5); border-radius: 999px; padding: 5px 14px 6px; }
+  #scrub .jump:hover { background: rgba(40, 100, 170, 0.55); }
+  #scrub input[type=range] { flex: 1; margin: 0 6px; height: 22px; accent-color: #6cc6ff; cursor: pointer; }
+  #scrub .time { font-size: 17px; color: #9fb3c8; font-variant-numeric: tabular-nums; min-width: 96px; text-align: right; }
+  #message { position: fixed; left: 0; right: 0; bottom: 14px; z-index: 4; text-align: center; font-size: 20px; color: #ff9a90; }
+</style>
+</head>
+<body>
+
+<canvas id="sky"></canvas>
+<svg id="art" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet"></svg>
+<canvas id="dots"></canvas>
+
+<div id="hud">
+
+  <!-- Phrase headings -->
+  <div class="header ph1"><div class="tag">Rey</div><div class="title">Where Mom and Dad’s shares came from</div></div>
+  <div class="header ph2"><div class="tag">Finn</div><div class="title">What’s left to do: Ovintiv</div></div>
+  <div class="header ph3"><div class="tag">Kylo Ren</div><div class="title">What’s left to do: Cenovus</div></div>
+  <div class="header ph4 big"><div class="tag">Rey and Han Solo</div><div class="title">Your steps from here</div></div>
+
+  <div id="year">2002</div>
+
+  <!-- Phrase 1 (Rey): one caption per chord. The year shows above. -->
+  <div class="cap ph1" data-beat="1">
+    <h2>Encana</h2>
+    <ul>
+      <li>Mom and Dad held shares in one company, Encana.</li>
+      <li>Each had one certificate.</li>
+    </ul>
+  </div>
+  <div class="cap ph1" data-beat="2">
+    <h2>Split</h2>
+    <ul>
+      <li>Encana split its shares two for one.</li>
+      <li>Each got a second certificate for the same number of shares. That’s why each has two Encana certificates.</li>
+    </ul>
+  </div>
+  <div class="cap ph1" data-beat="3">
+    <h2>Cenovus</h2>
+    <ul>
+      <li>Encana split into two companies. Encana kept the natural gas business, and a new company, Cenovus, took the oil business.</li>
+      <li>Shareholders got one Cenovus share for each Encana share and kept their Encana shares.</li>
+    </ul>
+  </div>
+  <div class="cap ph1" data-beat="4">
+    <h2>Ovintiv</h2>
+    <ul>
+      <li>Encana moved to the United States and became Ovintiv.</li>
+      <li>Every five Encana shares became one Ovintiv share.</li>
+      <li>Mom and Dad’s Encana shares haven’t been converted yet. Odyssey Trust converts them and tells us how many Ovintiv shares they get.</li>
+    </ul>
+  </div>
+
+  <!-- Phrase 2 (Finn): Ovintiv -->
+  <div class="cap ph2" data-beat="5">
+    <h2><span class="co">Ovintiv:</span> easy</h2>
+    <ul>
+      <li>BMO Medallion stamped both forms after checking wills, probate and death certificates.</li>
+      <li>So Odyssey’s email asks for nothing else.</li>
+      <li>Each envelope has 6 items.</li>
+    </ul>
+  </div>
+  <div class="cap ph2" data-beat="6">
+    <h2><span class="co">Ovintiv:</span> done</h2>
+    <ul class="checks">
+      <li>Letters of Transmittal: signed and stamped.</li>
+      <li>Sale requests, US tax forms and cover letters: printed.</li>
+      <li>Four Encana certificates: in hand.</li>
+    </ul>
+  </div>
+  <div class="cap ph2" data-beat="7">
+    <h2><span class="co">Ovintiv:</span> call</h2>
+    <ul>
+      <li>Can Mom’s shares go to Dad’s estate?</li>
+      <li>Do they want any other papers?</li>
+      <li>Will they accept the W‑8BEN‑E tax form?</li>
+      <li>Where should the US dollar cheque go?</li>
+    </ul>
+  </div>
+  <div class="cap ph2" data-beat="8">
+    <h2><span class="co">Ovintiv:</span> mail</h2>
+    <ul>
+      <li>I sign the sale requests, tax forms and cover letters.</li>
+      <li>One envelope per parent, by registered mail.</li>
+      <li>Odyssey sells the shares, takes its fee and mails a US dollar cheque.</li>
+    </ul>
+  </div>
+
+  <!-- Phrase 3 (Kylo Ren): Cenovus -->
+  <div class="cap ph3" data-beat="9">
+    <h2><span class="co">Cenovus:</span> hard</h2>
+    <ul>
+      <li>Mom’s will was never probated.</li>
+      <li>So Computershare wants a bond: 3% of the shares’ value, about $815 in September 2026.</li>
+      <li>Mom’s envelope has 14 items. Dad’s has 9.</li>
+    </ul>
+  </div>
+  <div class="cap ph3" data-beat="10">
+    <h2><span class="co">Cenovus:</span> done</h2>
+    <ul class="checks">
+      <li>Transfer forms: stamped.</li>
+      <li>Declarations: sworn and sealed.</li>
+      <li>Certified copies: in hand.</li>
+      <li>Letters of instruction: drafted.</li>
+    </ul>
+  </div>
+  <div class="cap ph3" data-beat="11">
+    <h2><span class="co">Cenovus:</span> 30 days</h2>
+    <ul>
+      <li>Mom’s bond quote lasts 30 days from the date on Computershare’s letter.</li>
+      <li>In that time their new forms come by mail, I swear them, and everything goes back.</li>
+    </ul>
+  </div>
+  <div class="cap ph3" data-beat="12">
+    <h2><span class="co">Cenovus:</span> steps</h2>
+    <ol>
+      <li>Call Computershare, but hold off on Mom’s quote.</li>
+      <li>Mail Dad’s envelope.</li>
+      <li>Get everything for Mom’s ready.</li>
+      <li>Ask for her quote and finish inside 30 days.</li>
+    </ol>
+  </div>
+
+  <!-- After the twelfth chord: your steps from here. data-step says which
+       part of the slower music each block comes in on (see HOLD_STEPS). -->
+  <div class="hold" id="done-label" data-step="0">Done so far</div>
+  <ul class="hold" id="done-list" data-step="0">
+    <li><span class="k">Finished:</span> the six stamped and sealed forms</li>
+    <li><span class="k">In hand:</span> the certified copies and all six share certificates</li>
+    <li><span class="k">Printed:</span> the sale requests, tax forms and letters</li>
+    <li><span class="k">Left:</span> two calls, three bank cheques, Mom’s Waiver of Probate, then signing and mailing</li>
+  </ul>
+  <div class="hold step ph2" data-step="1" style="top: 200px">
+    <h3>1. Odyssey <span class="tag">Ovintiv shares, no deadline</span></h3>
+    <p>You call Odyssey Trust. The questions are on the call sheet.</p>
+    <p>Then I sign <i>→</i> both Ovintiv envelopes go by registered mail <i>→</i> Odyssey sells the shares and mails a US dollar cheque.</p>
+  </div>
+  <div class="hold step ph3" data-step="2" style="top: 430px">
+    <h3>2. Computershare <span class="tag">Cenovus shares, no deadline</span></h3>
+    <p>The harder call, with six questions. The two big ones: can Mom’s shares go straight to Dad’s estate, and can Dad’s account skip the bond?</p>
+    <p>Don’t ask for Mom’s bond quote yet. It starts the 30 days. Then Dad’s envelope goes by registered mail.</p>
+  </div>
+  <div class="hold step ph3" data-step="3" style="top: 660px">
+    <h3>3. Mom’s 30 days <span class="tag">Deadline: 30 days from Computershare’s letter</span></h3>
+    <p>The worst part. Ask for Mom’s bond quote only when everything else is ready. Mail time uses some of the 30 days.</p>
+    <p>The new Waiver comes <i>→</i> you check it <i>→</i> I swear it before a notary with a seal <i>→</i> I get the bond cheque <i>→</i> the envelope goes.</p>
+  </div>
+
+  <div id="intro">
+    <div class="kicker">Mom and Dad’s shares</div>
+    <h1>Where they came from, and what’s left to do</h1>
+    <button id="start" class="btn" type="button">Start</button>
+    <div class="note">With the opening of the Force Awakens trailer</div>
+  </div>
+  <button id="again" class="btn" type="button" hidden>Play again</button>
+  <button id="pause" class="btn" type="button" hidden>Pause</button>
+  <div id="scrub" hidden>
+    <button class="jump" type="button" data-part="0">History</button>
+    <button class="jump" type="button" data-part="1">Ovintiv</button>
+    <button class="jump" type="button" data-part="2">Cenovus</button>
+    <button class="jump" type="button" data-part="3">Your steps</button>
+    <input type="range" min="0" max="90" step="0.01" value="0" aria-label="Position in the show">
+    <span class="time">0:00 / 0:00</span>
+  </div>
+</div>
+
+<div id="message" hidden></div>
+<audio id="music" src="star-wars-force-awakens-trailer.m4a" preload="auto"></audio>
+
+<script>
+  // =====================================================================
+  // TIMINGS, in seconds from the start of the trailer. Edit these to retime.
+  // =====================================================================
+
+  // One line per chord: [chord starts, chord ends]. Each chord's words show
+  // between its two times.
+  const NOTES = [
+    // Phrase 1 (Rey): where Mom and Dad's shares came from
+    [ 0.25,  4.80],  //  1  2002: Encana      (E chord, high B)
+    [ 6.41, 11.60],  //  2  2005: split       (A minor)
+    [11.79, 16.85],  //  3  2009: Cenovus     (F)
+    [17.04, 22.00],  //  4  2020: Ovintiv     (E)
+    // Phrase 2 (Finn): Ovintiv
+    [23.68, 27.60],  //  5  Ovintiv: easy     (E, with a low boom)
+    [27.80, 31.95],  //  6  Ovintiv: done     (A minor)
+    [32.14, 36.20],  //  7  Ovintiv: call     (F)
+    [36.37, 40.45],  //  8  Ovintiv: mail     (E)
+    // Phrase 3 (Kylo Ren): Cenovus
+    [40.65, 44.55],  //  9  Cenovus: hard     (E)
+    [44.75, 48.45],  // 10  Cenovus: done     (A minor)
+    [48.66, 52.45],  // 11  Cenovus: 30 days  (F)
+    [52.65, 56.60],  // 12  Cenovus: steps    (E)
+  ];
+
+  // After the twelfth chord ends, "Your steps from here" builds up and the
+  // music keeps playing for HOLD_SECONDS. Then it fades out over
+  // FADE_OUT_SECONDS and stops. Set FADE_OUT_SECONDS to null to let the
+  // trailer play to its end.
+  const HOLD_SECONDS = 30;
+  const FADE_OUT_SECONDS = 3;
+
+  // When each part of "Your steps from here" comes in, in seconds from the
+  // start of the trailer: done so far, step 1, step 2, step 3. They sit on
+  // the bass changes in the slower music after the twelfth chord.
+  const HOLD_STEPS = [56.75, 60.45, 64.00, 67.75];
+
+  // Press this key to log the current music time to the browser console.
+  const TAP_KEY = 't';
+  // =====================================================================
+
+
+  // ---------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------
+  const N = i => NOTES[i][0];                      // when chord i starts (counting from 0)
+  const F = i => NOTES[i][1];                      // when chord i ends
+  const HOLD_AT = () => F(NOTES.length - 1);       // the end of the twelfth chord
+  const STEP_AT = i => Math.max(HOLD_STEPS[i], HOLD_AT());
+  const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const ramp = (t, t0, dur) => clamp01((t - t0) / dur);
+  const EASE = d3.easeCubicInOut;
+  const TAU = 2 * Math.PI;
+
+  // 0 to 1: fades in over fin seconds from a, fades out over fout seconds up to b.
+  function shown(t, a, b = Infinity, fin = 0.35, fout = 0.3) {
+    if (t < a || t > b) return 0;
+    const i = fin > 0 ? clamp01((t - a) / fin) : 1;
+    const o = b === Infinity ? 1 : fout > 0 ? clamp01((b - t) / fout) : 1;
+    return Math.min(i, o);
+  }
+
+  // A value that moves from vals[k] to vals[k + 1] when starts[k] comes.
+  function steps(t, vals, starts, dur, ease = d3.easeCubicOut) {
+    let v = vals[0];
+    for (let k = 0; k < starts.length; k++) {
+      if (t >= starts[k]) v = vals[k] + (vals[k + 1] - vals[k]) * ease(clamp01((t - starts[k]) / dur));
+    }
+    return v;
+  }
+
+  // The last chord from a to b that has started, or -1.
+  function lastStarted(t, a, b) {
+    for (let i = b; i >= a; i--) if (t >= N(i)) return i;
+    return -1;
+  }
+
+  const rnd = d3.randomLcg(20261106);
+  const hash = v => { const s = Math.sin(v * 127.1) * 43758.5453; return s - Math.floor(s); };
+
+
+  // ---------------------------------------------------------------------
+  // Colours and layout. The stage is 1600 x 900 units and scales to fit
+  // the window. The stars fill the whole window.
+  // ---------------------------------------------------------------------
+  const SW = 1600, SH = 900;
+  const COL = { gold: [244, 194, 105], blue: [108, 198, 255], red: [255, 84, 72], star: [214, 224, 255] };
+  const HEX = { gold: '#f4c269', blue: '#6cc6ff', red: '#ff5a4e', warm: '#f3e4c6', bg: '#03050b' };
+  const MOM = 960, DAD = 1360, ROW1 = 300, ROW2 = 615, TL_Y = 846;   // phrase 1
+  const BLUE_Y = 250, RED_Y = 720, HILT = 120, TIP = 1500;            // phrases 2 and 3
+  const STOPS = [360, 680, 1000, 1320];
+  const ROUTE_X = 560, ROUTE_YS = [255, 490, 725];                    // your steps from here
+  const YEARS = [2002, 2005, 2009, 2020];
+
+
+  // ---------------------------------------------------------------------
+  // The share dots. Each dot has a list of keys: where it heads, how big,
+  // how bright and what colour, starting at time t0 and taking dur
+  // seconds. Its look at any moment is worked out from the music time.
+  // ---------------------------------------------------------------------
+  const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+  // A sunflower layout: dot i of a cluster, sp units apart.
+  function petal(i, sp) { const r = sp * Math.sqrt(i + 0.5), a = i * GOLDEN; return [r * Math.cos(a), r * Math.sin(a)]; }
+  const clusterR = (n, sp) => sp * Math.sqrt(n);
+
+  const parts = [];
+  function group(name, n, layer, kind) {
+    const g = { name, n, layer, kind, parts: [], center: { keys: [] } };
+    for (let i = 0; i < n; i++) {
+      const p = { g, i, u: rnd(), ph: rnd() * TAU, ph2: rnd() * TAU, keys: [] };
+      g.parts.push(p);
+      parts.push(p);
+    }
+    return g;
+  }
+  function init(p, st) {
+    p.keys = [{ t0: -Infinity, dur: 1, ease: EASE, x: st.x, y: st.y, r: st.r ?? 0, a: st.a ?? 0, c: st.c ?? COL.star }];
+  }
+  function to(p, t0, dur, ease, st) {
+    const L = p.keys[p.keys.length - 1];
+    p.keys.push({ t0, dur, ease, x: st.x ?? L.x, y: st.y ?? L.y, r: st.r ?? L.r, a: st.a ?? L.a, c: st.c ?? L.c });
+  }
+  function lerpState(f, k, q) {
+    return {
+      x: f.x + (k.x - f.x) * q, y: f.y + (k.y - f.y) * q, r: f.r + (k.r - f.r) * q, a: f.a + (k.a - f.a) * q,
+      c: [f.c[0] + (k.c[0] - f.c[0]) * q, f.c[1] + (k.c[1] - f.c[1]) * q, f.c[2] + (k.c[2] - f.c[2]) * q],
+    };
+  }
+  // Works out where each key's move starts from, so a new move can take
+  // over smoothly from one that hasn't finished.
+  function prepare(keys) {
+    keys[0].from = keys[0];
+    for (let k = 1; k < keys.length; k++) {
+      const A = keys[k - 1], B = keys[k];
+      if (B.t0 < A.t0) console.warn('Dot keys out of order at', B.t0);
+      B.from = lerpState(A.from, A, A.ease(clamp01((B.t0 - A.t0) / A.dur)));
+    }
+  }
+  const S = { x: 0, y: 0, r: 0, a: 0, c0: 0, c1: 0, c2: 0 };
+  function evalKeys(keys, t) {
+    let k = keys.length - 1;
+    while (k > 0 && keys[k].t0 > t) k--;
+    const K = keys[k], f = K.from, q = K.ease(clamp01((t - K.t0) / K.dur));
+    S.x = f.x + (K.x - f.x) * q;
+    S.y = f.y + (K.y - f.y) * q;
+    S.r = f.r + (K.r - f.r) * q;
+    S.a = f.a + (K.a - f.a) * q;
+    S.c0 = f.c[0] + (K.c[0] - f.c[0]) * q;
+    S.c1 = f.c[1] + (K.c[1] - f.c[1]) * q;
+    S.c2 = f.c[2] + (K.c[2] - f.c[2]) * q;
+    return S;
+  }
+  function posAt(p, t) { prepare(p.keys); const s = evalKeys(p.keys, t); return { x: s.x, y: s.y }; }
+  function centerAt(g, t) { const s = evalKeys(g.center.keys, t); return { x: s.x, y: s.y }; }
+
+  // Moves a whole cluster. The middle dots go first and the rest follow,
+  // up to `delay` seconds later.
+  function groupMove(g, t, o) {
+    const n = o.n ?? g.n, off = o.offset ?? 0, maxD = o.delay ?? 0, ease = o.ease ?? EASE;
+    g.parts.forEach((p, i) => {
+      const k = i + off, d = maxD * (0.6 * k / n + 0.4 * p.u);
+      const st = { r: o.r, a: o.a, c: o.c };
+      if (o.cx != null) { const [dx, dy] = petal(k, o.sp); st.x = o.cx + dx; st.y = o.cy + dy; }
+      to(p, t + d, o.dur, ease, st);
+    });
+    if (o.cx != null) to(g.center, t + maxD * 0.45, o.dur, ease, { x: o.cx, y: o.cy });
+  }
+
+  // Five Encana dots fly into each Ovintiv dot. Each Encana dot goes to the
+  // nearest Ovintiv dot that still has room.
+  function mergeInto(enc, spots, t) {
+    const n = enc.length, m = spots.length, base = Math.floor(n / m), extra = n - base * m;
+    const room = spots.map((s, j) => base + (j < extra ? 1 : 0));
+    const pos = enc.map(p => posAt(p, t));
+    const cx = d3.mean(spots, s => s[0]), cy = d3.mean(spots, s => s[1]);
+    const order = d3.range(n).sort((i, j) => Math.hypot(pos[j].x - cx, pos[j].y - cy) - Math.hypot(pos[i].x - cx, pos[i].y - cy));
+    for (const i of order) {
+      let best = -1, bd = Infinity;
+      for (let j = 0; j < m; j++) {
+        if (!room[j]) continue;
+        const d = (spots[j][0] - pos[i].x) ** 2 + (spots[j][1] - pos[i].y) ** 2;
+        if (d < bd) { bd = d; best = j; }
+      }
+      room[best]--;
+      const p = enc[i];
+      to(p, t + 0.4 * p.u, 1.0, d3.easeCubicIn, { x: spots[best][0], y: spots[best][1], r: 1.0, a: 0, c: COL.blue });
+    }
+  }
+
+  const momE1 = group('momE1', 294, 2, 'E'), momE2 = group('momE2', 294, 2, 'E');
+  const dadE1 = group('dadE1', 188, 2, 'E'), dadE2 = group('dadE2', 188, 2, 'E');
+  const momC = group('momC', 588, 1, 'C'), dadC = group('dadC', 376, 1, 'C');
+  const momO = group('momO', 118, 3, 'O'), dadO = group('dadO', 75, 3, 'O');
+  const SP = 3.3;           // spacing of the dots in phrase 1
+  const O_TOTAL = 118 + 75;
+
+  function buildPlan() {
+    const H0 = HOLD_AT();
+
+    // Before the first chord, Mom and Dad's first 482 shares are faint stars.
+    for (const p of [...momE1.parts, ...dadE1.parts]) {
+      init(p, { x: 40 + rnd() * 1520, y: 40 + rnd() * 820, r: 1.1, a: 0.22, c: COL.star });
+    }
+    for (const [g, x, y] of [[momE1, MOM, ROW1], [momE2, MOM, ROW1], [dadE1, DAD, ROW1], [dadE2, DAD, ROW1],
+                             [momC, MOM, ROW2], [dadC, DAD, ROW2], [momO, MOM, ROW1], [dadO, DAD, ROW1]]) {
+      init(g.center, { x, y });
+    }
+
+    // Chord 1, 2002: they gather into Encana, one cluster for Mom, one for Dad.
+    groupMove(momE1, N(0), { cx: MOM, cy: ROW1, sp: SP, r: 1.9, a: 1, c: COL.gold, dur: 1.9, delay: 0.9 });
+    groupMove(dadE1, N(0), { cx: DAD, cy: ROW1, sp: SP, r: 1.9, a: 1, c: COL.gold, dur: 1.9, delay: 0.9 });
+
+    // Chord 2, 2005: every share splits in two. The new halves are the
+    // second certificate.
+    for (const [a, b, x, dx] of [[momE1, momE2, MOM, 65], [dadE1, dadE2, DAD, 52]]) {
+      b.parts.forEach((p, i) => {
+        const q = posAt(a.parts[i], N(1));
+        p.u = a.parts[i].u;
+        init(p, { x: q.x, y: q.y, r: 1.9, a: 0, c: COL.gold });
+      });
+      groupMove(a, N(1), { cx: x - dx, cy: ROW1, sp: SP, dur: 1.3, delay: 0.35 });
+      groupMove(b, N(1), { cx: x + dx, cy: ROW1, sp: SP, a: 1, dur: 1.3, delay: 0.35 });
+    }
+
+    // Chord 3, 2009: one new Cenovus share peels off each Encana share.
+    for (const [a, b, c, x] of [[momE1, momE2, momC, MOM], [dadE1, dadE2, dadC, DAD]]) {
+      const enc = d3.merge(a.parts.map((p, i) => [p, b.parts[i]]));
+      c.parts.forEach((p, k) => {
+        const q = posAt(enc[k], N(2));
+        init(p, { x: q.x, y: q.y, r: 1.9, a: 0, c: COL.gold });
+      });
+      groupMove(c, N(2), { cx: x, cy: ROW2, sp: SP, r: 1.9, a: 1, c: COL.red, dur: 1.6, delay: 0.7 });
+    }
+
+    // Chord 4, 2020: every five Encana shares merge into one Ovintiv share.
+    for (const [a, b, o, x] of [[momE1, momE2, momO, MOM], [dadE1, dadE2, dadO, DAD]]) {
+      const spots = o.parts.map((p, j) => { const [dx, dy] = petal(j, 7.4); return [x + dx, ROW1 + dy]; });
+      mergeInto([...a.parts, ...b.parts], spots, N(3));
+      o.parts.forEach((p, j) => init(p, { x: spots[j][0], y: spots[j][1], r: 0, a: 0, c: COL.blue }));
+      groupMove(o, N(3) + 0.7, { r: 4.2, a: 1, dur: 0.8, delay: 0.4 });
+    }
+
+    // Phrase 2: the Ovintiv shares ride the blue blade, one stop per chord.
+    // Cenovus waits, dim, at the bottom left.
+    STOPS.forEach((sx, k) => {
+      const t = N(4 + k), dur = k ? 1.0 : 1.4, delay = k ? 0.25 : 0.35;
+      groupMove(momO, t, { cx: sx - 46, cy: BLUE_Y, sp: 4.2, r: 2.8, a: 1, dur, delay });
+      groupMove(dadO, t, { cx: sx + 46, cy: BLUE_Y, sp: 4.2, r: 2.8, a: 1, dur, delay });
+    });
+    groupMove(momC, N(4), { cx: 200, cy: 765, sp: 2.0, r: 1.3, a: 0.3, dur: 1.4, delay: 0.35 });
+    groupMove(dadC, N(4), { cx: 322, cy: 765, sp: 2.0, r: 1.3, a: 0.3, dur: 1.4, delay: 0.35 });
+    // Chord 8: both envelopes reach Odyssey Trust and become a US dollar cheque.
+    groupMove(momO, N(7) + 1.5, { cx: TIP, cy: BLUE_Y, sp: 1.75, n: O_TOTAL, r: 1.25, a: 0.95, dur: 0.9, delay: 0.45 });
+    groupMove(dadO, N(7) + 1.5, { cx: TIP, cy: BLUE_Y, sp: 1.75, offset: 118, n: O_TOTAL, r: 1.25, a: 0.95, dur: 0.9, delay: 0.45 });
+    groupMove(momO, N(8), { a: 0.4, dur: 0.8 });
+    groupMove(dadO, N(8), { a: 0.4, dur: 0.8 });
+
+    // Phrase 3: the Cenovus shares ride the red blade.
+    STOPS.forEach((sx, k) => {
+      const t = N(8 + k), dur = k ? 1.0 : 1.2;
+      groupMove(momC, t, { cx: sx - 52, cy: RED_Y, sp: 2.15, r: 1.5, a: 1, dur, delay: 0.35 });
+      groupMove(dadC, t, { cx: sx + 52, cy: RED_Y, sp: 2.15, r: 1.5, a: 1, dur, delay: 0.35 });
+    });
+    // Chord 12, step 2: Dad's envelope goes to Computershare.
+    groupMove(dadC, N(11) + 1.2, { cx: TIP, cy: RED_Y, sp: 1.35, r: 1.2, dur: 0.9, delay: 0.5 });
+
+    // Your steps from here: each cluster settles by its step, dim until the
+    // step comes in.
+    groupMove(momO, H0, { cx: ROUTE_X, cy: ROUTE_YS[0], sp: 3.3, n: O_TOTAL, r: 2.3, a: 0.35, dur: 1.8, delay: 0.5 });
+    groupMove(dadO, H0, { cx: ROUTE_X, cy: ROUTE_YS[0], sp: 3.3, offset: 118, n: O_TOTAL, r: 2.3, a: 0.35, dur: 1.8, delay: 0.5 });
+    groupMove(dadC, H0, { cx: ROUTE_X, cy: ROUTE_YS[1], sp: 2.3, r: 1.5, a: 0.35, dur: 1.8, delay: 0.5 });
+    groupMove(momC, H0, { cx: ROUTE_X, cy: ROUTE_YS[2], sp: 2.0, r: 1.4, a: 0.35, dur: 1.8, delay: 0.5 });
+    const lightUp = i => Math.max(STEP_AT(i), H0 + 0.6);   // after the move above has started
+    groupMove(momO, lightUp(1), { a: 1, dur: 0.7 });
+    groupMove(dadO, lightUp(1), { a: 1, dur: 0.7 });
+    groupMove(dadC, lightUp(2), { a: 1, dur: 0.7 });
+    groupMove(momC, lightUp(3), { a: 1, dur: 0.7 });
+
+    for (const p of parts) prepare(p.keys);
+    for (const g of [momE1, momE2, dadE1, dadE2, momC, dadC, momO, dadO]) prepare(g.center.keys);
+    parts.sort((a, b) => a.g.layer - b.g.layer);   // Cenovus at the back, Ovintiv in front
+  }
+  buildPlan();
+
+  // ---------------------------------------------------------------------
+  // The drawings (SVG), built with D3
+  // ---------------------------------------------------------------------
+  const svg = d3.select('#art');
+  const defs = svg.append('defs');
+  for (const [id, sd] of [['blur3', 3], ['blur5', 5], ['blur9', 9]]) {
+    defs.append('filter').attr('id', id).attr('filterUnits', 'userSpaceOnUse')
+      .attr('x', -300).attr('y', -300).attr('width', SW + 600).attr('height', SH + 600)
+      .append('feGaussianBlur').attr('stdDeviation', sd);
+  }
+  const routeGrad = defs.append('linearGradient').attr('id', 'route-grad').attr('gradientUnits', 'userSpaceOnUse')
+    .attr('x1', 0).attr('y1', 200).attr('x2', 0).attr('y2', 790);
+  routeGrad.append('stop').attr('offset', '0%').attr('stop-color', HEX.blue);
+  routeGrad.append('stop').attr('offset', '30%').attr('stop-color', HEX.blue);
+  routeGrad.append('stop').attr('offset', '52%').attr('stop-color', HEX.red);
+  routeGrad.append('stop').attr('offset', '100%').attr('stop-color', HEX.red);
+
+  const label = (g, x, y, txt, cls, anchor = 'middle') =>
+    g.append('text').attr('x', x).attr('y', y).attr('text-anchor', anchor).attr('class', cls).text(txt);
+  const pulse = (g, color) => g.append('circle').attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2).attr('opacity', 0);
+
+  // ----- Phrase 1: the lineage -----
+  const g1 = svg.append('g');
+  const xYear = d3.scaleLinear().domain([2002, 2020]).range([720, 1480]);
+  g1.append('g').selectAll('line').data(d3.range(2002, 2021)).join('line')
+    .attr('x1', d => xYear(d)).attr('x2', d => xYear(d)).attr('y1', TL_Y).attr('y2', TL_Y + 5)
+    .attr('stroke', 'rgba(255,255,255,0.22)');
+  const axis = g1.append('g').attr('class', 'axis').attr('transform', `translate(0,${TL_Y})`)
+    .call(d3.axisBottom(xYear).tickValues(YEARS).tickFormat(d3.format('d')).tickSize(10).tickPadding(10));
+  axis.select('.domain').attr('stroke', 'rgba(255,255,255,0.18)');
+  axis.selectAll('.tick line').attr('stroke', 'rgba(255,255,255,0.35)');
+  const tlGlow = g1.append('line').attr('x1', xYear(2002)).attr('y1', TL_Y).attr('y2', TL_Y)
+    .attr('stroke', HEX.gold).attr('stroke-width', 9).attr('stroke-linecap', 'round').attr('filter', 'url(#blur5)');
+  const tlCore = g1.append('line').attr('x1', xYear(2002)).attr('y1', TL_Y).attr('y2', TL_Y)
+    .attr('stroke', '#fff3d9').attr('stroke-width', 2.6).attr('stroke-linecap', 'round');
+  const tlNodes = g1.append('g').selectAll('circle').data(YEARS).join('circle')
+    .attr('cx', d => xYear(d)).attr('cy', TL_Y).attr('r', 5.5).attr('stroke', HEX.gold).attr('stroke-width', 1.6);
+  const pulse1 = pulse(g1, HEX.gold).attr('cy', TL_Y);
+
+  // A dashed ring round each Encana certificate.
+  const certs = g1.append('g').selectAll('circle').data([
+    { g: momE1, r: clusterR(294, SP) + 10, born: false }, { g: momE2, r: clusterR(294, SP) + 10, born: true },
+    { g: dadE1, r: clusterR(188, SP) + 10, born: false }, { g: dadE2, r: clusterR(188, SP) + 10, born: true },
+  ]).join('circle').attr('r', d => d.r).attr('fill', 'none').attr('stroke', HEX.gold)
+    .attr('stroke-width', 1.3).attr('stroke-dasharray', '3 6');
+
+  const labEncana = label(g1, 805, ROW1 + 10, 'Encana', 'row gold', 'end');
+  const labGas = label(g1, 805, ROW1 + 40, 'natural gas', 'rowsub', 'end');
+  const labOvintiv = label(g1, 805, ROW1 + 10, 'Ovintiv', 'row blue', 'end');
+  const labUS = label(g1, 805, ROW1 + 40, 'moved to the US', 'rowsub', 'end');
+  const labCenovus = label(g1, 805, ROW2 + 10, 'Cenovus', 'row red', 'end');
+  const labOil = label(g1, 805, ROW2 + 40, 'oil', 'rowsub', 'end');
+  function numLabel(x, y) {
+    const t = g1.append('text').attr('x', x).attr('y', y).attr('text-anchor', 'middle').attr('class', 'num');
+    t.append('tspan').attr('class', 'who');
+    t.append('tspan').attr('class', 'val').attr('dx', 8);
+    return t;
+  }
+  const numMomTop = numLabel(MOM, 414), numDadTop = numLabel(DAD, 414);
+  const numMomBot = numLabel(MOM, 730), numDadBot = numLabel(DAD, 730);
+  const estMom = label(g1, MOM, 438, 'my estimate', 'est'), estDad = label(g1, DAD, 438, 'my estimate', 'est');
+
+  // ----- Phrase 2: the blue blade (Ovintiv) -----
+  const g2 = svg.append('g');
+  function hilt(g, y, metal) {
+    g.append('line').attr('x1', HILT - 54).attr('x2', HILT - 6).attr('y1', y).attr('y2', y)
+      .attr('stroke', metal).attr('stroke-width', 11).attr('stroke-linecap', 'round');
+    g.append('g').selectAll('line').data([HILT - 44, HILT - 36, HILT - 28]).join('line')
+      .attr('x1', d => d).attr('x2', d => d).attr('y1', y - 5.5).attr('y2', y + 5.5)
+      .attr('stroke', '#2c323b').attr('stroke-width', 2.2);
+    g.append('line').attr('x1', HILT).attr('x2', TIP).attr('y1', y).attr('y2', y)
+      .attr('stroke', metal).attr('stroke-opacity', 0.35).attr('stroke-width', 1.2).attr('stroke-dasharray', '2 9');
+  }
+  hilt(g2, BLUE_Y, '#8d96a3');
+  const b2glow = g2.append('line').attr('x1', HILT).attr('y1', BLUE_Y).attr('y2', BLUE_Y)
+    .attr('stroke', '#3d9bff').attr('stroke-width', 12).attr('stroke-linecap', 'round').attr('filter', 'url(#blur5)');
+  const b2core = g2.append('line').attr('x1', HILT).attr('y1', BLUE_Y).attr('y2', BLUE_Y)
+    .attr('stroke', '#eaf7ff').attr('stroke-width', 3.2).attr('stroke-linecap', 'round');
+  const STOPS2 = [...STOPS, TIP];
+  const nodes2 = g2.append('g').selectAll('circle').data(STOPS2).join('circle')
+    .attr('cx', d => d).attr('cy', BLUE_Y).attr('r', (d, i) => (i === 4 ? 9 : 6.5))
+    .attr('stroke', HEX.blue).attr('stroke-width', 1.8);
+  const labels2 = g2.append('g').selectAll('text').data(['Easy', 'Done', 'Call', 'Mail', 'Odyssey Trust']).join('text')
+    .attr('x', (d, i) => STOPS2[i]).attr('y', BLUE_Y - 64).attr('text-anchor', 'middle').attr('class', 'node blue').text(d => d);
+  label(g2, HILT - 30, BLUE_Y - 64, 'Ovintiv', 'node blue');
+  const who2 = g2.append('g').selectAll('text').data([{ g: momO, t: 'Mom' }, { g: dadO, t: 'Dad' }]).join('text')
+    .attr('text-anchor', 'middle').attr('class', 'who2').text(d => d.t);
+  const pulse2 = pulse(g2, HEX.blue).attr('cy', BLUE_Y);
+
+  // Chord 5: the BMO Medallion stamp lands on both forms.
+  const sealLine = d3.lineRadial().curve(d3.curveLinearClosed);
+  const sealPath = R => sealLine(d3.range(96).map(k => [k / 96 * TAU, k % 2 ? R - 5 : R]));
+  const stamps = g2.append('g').selectAll('g').data([
+    { x: STOPS[0] - 46, r: 56, at: 1.45 }, { x: STOPS[0] + 46, r: 47, at: 1.75 },
+  ]).join('g');
+  stamps.append('path').attr('d', d => sealPath(d.r)).attr('fill', 'rgba(108,198,255,0.07)')
+    .attr('stroke', '#cfeaff').attr('stroke-width', 1.5);
+  stamps.append('circle').attr('r', d => d.r - 10).attr('fill', 'none').attr('stroke', '#cfeaff')
+    .attr('stroke-width', 1).attr('stroke-dasharray', '1 4');
+  const shocks = g2.append('g').selectAll('circle').data(stamps.data()).join('circle')
+    .attr('cx', d => d.x).attr('cy', BLUE_Y).attr('fill', 'none').attr('stroke', '#cfeaff').attr('stroke-width', 1.5);
+
+  // Chord 7: the call goes out to Odyssey Trust.
+  const arcGen = d3.arc();
+  const signal = g2.append('g').attr('transform', `translate(${STOPS[2]},${BLUE_Y})`)
+    .selectAll('path').data([0, 1, 2]).join('path').attr('fill', HEX.blue);
+
+  // Chord 8: the cheque.
+  const token = g2.append('g').attr('transform', `translate(${TIP},${BLUE_Y})`);
+  const tokenInner = token.append('g');
+  tokenInner.append('circle').attr('r', 32).attr('fill', 'rgba(244,194,105,0.10)').attr('stroke', HEX.gold).attr('stroke-width', 1.6);
+  label(tokenInner, 0, 58, 'US$ cheque', 'node gold');
+
+  // ----- Phrase 3: the red blade (Cenovus), with a crossguard -----
+  const g3 = svg.append('g');
+  hilt(g3, RED_Y, '#646b75');
+  g3.append('line').attr('x1', HILT - 9).attr('x2', HILT - 9).attr('y1', RED_Y - 10).attr('y2', RED_Y + 10)
+    .attr('stroke', '#646b75').attr('stroke-width', 7).attr('stroke-linecap', 'round');
+  const b3glow = g3.append('path').attr('fill', 'none').attr('stroke', '#ff2020').attr('stroke-width', 13)
+    .attr('stroke-linecap', 'round').attr('filter', 'url(#blur5)');
+  const b3core = g3.append('path').attr('fill', 'none').attr('stroke', '#ffe2dc').attr('stroke-width', 2.6)
+    .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round');
+  const guards = g3.append('g').selectAll('g').data([-1, 1]).join('g');
+  const guardGlow = guards.append('path').attr('fill', 'none').attr('stroke', '#ff2020').attr('stroke-width', 9).attr('filter', 'url(#blur3)');
+  const guardCore = guards.append('path').attr('fill', 'none').attr('stroke', '#ffe2dc').attr('stroke-width', 2).attr('stroke-linecap', 'round');
+  const nodes3 = g3.append('g').selectAll('circle').data(STOPS2).join('circle')
+    .attr('cx', d => d).attr('cy', RED_Y).attr('r', (d, i) => (i === 4 ? 9 : 6.5))
+    .attr('stroke', HEX.red).attr('stroke-width', 1.8);
+  const labels3 = g3.append('g').selectAll('text').data(['Hard', 'Done', '30 days', 'Steps', 'Computershare']).join('text')
+    .attr('x', (d, i) => STOPS2[i]).attr('y', RED_Y + 96).attr('text-anchor', 'middle').attr('class', 'node red').text(d => d);
+  label(g3, HILT - 30, RED_Y + 96, 'Cenovus', 'node red');
+  const who3 = g3.append('g').selectAll('text').data([{ g: momC, t: 'Mom' }, { g: dadC, t: 'Dad' }]).join('text')
+    .attr('text-anchor', 'middle').attr('class', 'who2').text(d => d.t);
+  const pulse3 = pulse(g3, HEX.red).attr('cy', RED_Y);
+
+  // Chord 9: the bond, 3% of the shares' value.
+  const BOND_R = clusterR(588, 2.15) + 13;
+  const bond = g3.append('g').attr('transform', `translate(${STOPS[0] - 52},${RED_Y})`);
+  const bondRing = bond.append('circle').attr('r', BOND_R).attr('fill', 'none').attr('stroke', HEX.red)
+    .attr('stroke-width', 1.4).attr('pathLength', 1).attr('stroke-dasharray', 1);
+  const bondSliver = bond.append('path').attr('fill', '#ffd5cd')
+    .attr('d', arcGen({ innerRadius: BOND_R - 5, outerRadius: BOND_R + 5, startAngle: 1.75 * Math.PI - 0.03 * Math.PI, endAngle: 1.75 * Math.PI + 0.03 * Math.PI }));
+  label(bond, -0.707 * BOND_R - 10, -0.707 * BOND_R - 6, 'bond: 3%', 'node red', 'end');
+
+  // Chords 11 and 12, and step 3: Mom's 30 days, one segment a day.
+  const DAYS_R0 = clusterR(588, 2.15) + 9;
+  const gDays = svg.append('g');
+  const daySegs = gDays.selectAll('path').data(d3.pie().value(1).sort(null)(d3.range(30))).join('path')
+    .attr('d', d3.arc().innerRadius(DAYS_R0).outerRadius(DAYS_R0 + 10).padAngle(0.025)).attr('fill', HEX.red);
+  const daysText = label(gDays, -0.707 * (DAYS_R0 + 10) - 10, -0.707 * (DAYS_R0 + 10) - 6, '30 days', 'node red', 'end');
+
+  // ----- Your steps from here -----
+  const gH = svg.append('g');
+  const routeGlow = gH.append('line').attr('x1', ROUTE_X).attr('x2', ROUTE_X).attr('y1', 200)
+    .attr('stroke', 'url(#route-grad)').attr('stroke-width', 8).attr('filter', 'url(#blur5)').attr('opacity', 0.6);
+  const route = gH.append('line').attr('x1', ROUTE_X).attr('x2', ROUTE_X).attr('y1', 200)
+    .attr('stroke', 'url(#route-grad)').attr('stroke-width', 2.2);
+  const halos = gH.append('g').selectAll('circle').data(ROUTE_YS).join('circle')
+    .attr('cx', ROUTE_X).attr('cy', d => d).attr('r', 66).attr('filter', 'url(#blur9)')
+    .attr('fill', (d, i) => (i ? 'rgba(255,90,78,0.16)' : 'rgba(108,198,255,0.16)'));
+  const doneG = gH.append('g').attr('transform', 'translate(240,330)');
+  doneG.append('circle').attr('r', 88).attr('fill', 'none').attr('stroke', 'rgba(255,255,255,0.10)').attr('stroke-width', 12);
+  const doneArc = doneG.append('path').attr('fill', HEX.gold);
+  const doneArcGlow = doneG.append('path').attr('fill', HEX.gold).attr('filter', 'url(#blur5)').attr('opacity', 0.55);
+  label(doneG, 0, -26, 'about', 'pctsub');
+  const donePct = label(doneG, 0, 26, '0%', 'pct');
+  label(doneG, 0, 128, 'by my estimate', 'pctsub');
+
+  // ----- Twelve beats, top right: which chord is playing -----
+  const beatX = i => 1318 + i * 17 + Math.floor(i / 4) * 16;
+  const beatCol = i => (i < 4 ? HEX.gold : i < 8 ? HEX.blue : HEX.red);
+  const beats = svg.append('g').selectAll('circle').data(d3.range(12)).join('circle')
+    .attr('cx', beatX).attr('cy', 64).attr('r', 4.5).attr('stroke', beatCol).attr('stroke-width', 1.4);
+
+  // ---------------------------------------------------------------------
+  // The words (HTML), set up with D3
+  // ---------------------------------------------------------------------
+  const hud = d3.select('#hud');
+  const heads = hud.selectAll('.header');
+  const yearEl = document.getElementById('year');
+  const caps = hud.selectAll('.cap').datum(function () { return +this.dataset.beat - 1; });
+  caps.each(function (beat) {
+    const k = (beat - 4) % 4, left = beat < 4 ? 80 : Math.max(80, Math.min(1000, STOPS[k] - 120));
+    this.style.left = left + 'px';
+    if (beat < 4) this.style.top = '292px';
+    else if (beat < 8) this.style.top = '352px';
+    else this.style.bottom = (SH - 598) + 'px';
+  });
+  const capItems = caps.selectAll('li').datum(function (d, j) { return { beat: d3.select(this.parentNode.parentNode).datum(), j }; });
+  caps.selectAll('ul.checks li').insert('svg', ':first-child').attr('class', 'tick').attr('viewBox', '0 0 24 24')
+    .append('path').attr('d', 'M3 13 L9.5 19 L21 5').attr('pathLength', 1);
+  const ticks = caps.selectAll('svg.tick path').datum(function () { return d3.select(this.parentNode.parentNode).datum(); });
+  caps.selectAll('ol li').insert('span', ':first-child').attr('class', 'n').text(d => d.j + 1);
+  const holds = hud.selectAll('.hold');
+  const doneItems = hud.selectAll('#done-list li');
+
+  function op(el, o) {
+    el.style.opacity = o.toFixed(3);
+    el.style.visibility = o > 0.001 ? 'visible' : 'hidden';
+  }
+
+
+  // ---------------------------------------------------------------------
+  // Fitting the window
+  // ---------------------------------------------------------------------
+  const sky = document.getElementById('sky'), skyCtx = sky.getContext('2d');
+  const dots = document.getElementById('dots'), dotsCtx = dots.getContext('2d');
+  const hudEl = document.getElementById('hud');
+  let view = { w: 1, h: 1, s: 1, ox: 0, oy: 0, dpr: 1 };
+  function fit() {
+    const w = innerWidth, h = innerHeight, s = Math.min(w / SW, h / SH);
+    view = { w, h, s, ox: (w - SW * s) / 2, oy: (h - SH * s) / 2, dpr: Math.min(window.devicePixelRatio || 1, 2) };
+    hudEl.style.transform = `translate(${view.ox}px, ${view.oy}px) scale(${s})`;
+    for (const c of [sky, dots]) {
+      c.width = Math.round(w * view.dpr);
+      c.height = Math.round(h * view.dpr);
+      c.style.width = w + 'px';
+      c.style.height = h + 'px';
+    }
+  }
+
+
+  // ---------------------------------------------------------------------
+  // The sky: stars drifting towards us, with a jump to light speed when
+  // Finn's phrase starts (the low boom), a smaller one for Kylo Ren, and a
+  // gentle one when the slower music starts.
+  // ---------------------------------------------------------------------
+  const stars = d3.range(420).map(() => ({
+    x: (rnd() * 2 - 1) * 1.6, y: (rnd() * 2 - 1) * 1.6, z: rnd(),
+    s: 0.6 + Math.pow(rnd(), 4) * 2.2, b: 0.35 + rnd() * 0.65, f: 0.4 + rnd() * 1.8, ph: rnd() * TAU,
+    rgb: rnd() < 0.15 ? '255,226,184' : rnd() < 0.3 ? '184,212,255' : '222,230,255',
+  }));
+  const bursts = () => [[N(4), 0.55, 1.1], [N(8), 0.32, 0.9], [HOLD_AT(), 0.26, 1.6]];
+  const smoother = u => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (u * (u * 6 - 15) + 10));
+  function travel(t, amb) {
+    let D = amb * 0.006;
+    for (const [t0, A, w] of bursts()) D += A * smoother((t - t0) / w);
+    return D;
+  }
+  function speed(t) {
+    let v = 0.006;
+    for (const [t0, A, w] of bursts()) {
+      const u = (t - t0) / w;
+      if (u > 0 && u < 1) v += A * 30 * u * u * (1 - u) * (1 - u) / w;
+    }
+    return v;
+  }
+
+  function drawSky(t, amb) {
+    const { w, h, dpr } = view, ctx = skyCtx, H0 = HOLD_AT();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = HEX.bg;
+    ctx.fillRect(0, 0, w, h);
+
+    // A coloured light for each phrase.
+    const kylo = shown(t, N(8) - 0.1, H0 + 1.0, 0.5, 1.2);
+    const moods = [
+      [t < N(0) ? 1 : 0, 0.5, 0.5, 0.7, '40,80,170', 0.10],                            // start screen
+      [shown(t, N(0) - 0.6, N(4) + 0.6, 1.5, 1.0), 0.62, 1.15, 0.85, '244,170,80', 0.17], // Rey: a warm dawn
+      [shown(t, N(4) - 0.2, N(8) + 0.8, 0.8, 1.0), 0.5, -0.2, 0.9, '60,140,255', 0.15],   // Finn: blue light above
+      [kylo, 0.5, 1.2, 1.0, '230,30,40', 0.24],                                            // Kylo Ren: red light below
+      [shown(t, H0 + 0.2, Infinity, 2.0), 0.25, 0.35, 0.9, '255,214,160', 0.08],           // the slower music
+    ];
+    for (const [k, fx, fy, fr, rgb, a] of moods) {
+      if (k <= 0) continue;
+      const R = fr * Math.max(w, h), g = ctx.createRadialGradient(fx * w, fy * h, 0, fx * w, fy * h, R);
+      g.addColorStop(0, `rgba(${rgb},${a * k})`);
+      g.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    const D = travel(t, amb), v = speed(t);
+    const cx = w / 2, cy = h / 2, Fz = Math.max(w, h) * 0.5, dim = 1 - 0.3 * kylo;
+    for (const s of stars) {
+      let z = s.z - D;
+      z -= Math.floor(z);
+      const zz = 0.12 + z;
+      const x = cx + s.x * Fz / zz, y = cy + s.y * Fz / zz;
+      if (x < -30 || x > w + 30 || y < -30 || y > h + 30) continue;
+      const near = 1 - z;
+      const alpha = s.b * (0.3 + 0.7 * near * near) * (0.75 + 0.25 * Math.sin(amb * s.f + s.ph)) * dim;
+      const size = s.s * (0.55 + 1.1 * near);
+      const zt = zz + v * 0.07;
+      const xt = cx + s.x * Fz / zt, yt = cy + s.y * Fz / zt;
+      ctx.globalAlpha = Math.min(1, alpha);
+      if (z + v * 0.07 < 1 && Math.hypot(x - xt, y - yt) > 1.5) {
+        ctx.strokeStyle = `rgb(${s.rgb})`;
+        ctx.lineWidth = size;
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(xt, yt); ctx.lineTo(x, y); ctx.stroke();
+      } else {
+        ctx.fillStyle = `rgb(${s.rgb})`;
+        ctx.beginPath(); ctx.arc(x, y, size / 2, 0, TAU); ctx.fill();
+      }
+    }
+    if (kylo > 0) {
+      const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, `rgba(0,0,0,${0.45 * kylo})`);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+
+  // ---------------------------------------------------------------------
+  // The share dots, drawn on a canvas above the drawings
+  // ---------------------------------------------------------------------
+  function drawDots(t, amb) {
+    const ctx = dotsCtx, { dpr, s, ox, oy } = view;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, dots.width, dots.height);
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
+    const kylo = shown(t, N(8), HOLD_AT() + 0.3, 0.6, 0.8);
+    for (const p of parts) {
+      const st = evalKeys(p.keys, t);
+      if (st.a < 0.01 || st.r < 0.05) continue;
+      let x = st.x + Math.sin(amb * 0.9 + p.ph) * 0.5, y = st.y + Math.cos(amb * 0.75 + p.ph2) * 0.5;
+      if (kylo > 0 && p.g.kind === 'C') {   // Kylo Ren's shares tremble
+        x += Math.sin(amb * 37 + p.ph * 7) * 0.9 * kylo;
+        y += Math.cos(amb * 41 + p.ph2 * 5) * 0.9 * kylo;
+      }
+      const tw = 0.82 + 0.18 * Math.sin(amb * (1.3 + p.u * 2) + p.ph);
+      ctx.fillStyle = `rgb(${st.c0 | 0},${st.c1 | 0},${st.c2 | 0})`;
+      ctx.globalAlpha = st.a * 0.13 * tw;
+      ctx.beginPath(); ctx.arc(x, y, st.r * 2.8, 0, TAU); ctx.fill();
+      ctx.globalAlpha = st.a * tw;
+      ctx.beginPath(); ctx.arc(x, y, st.r, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // A crackling line, for Kylo Ren's blade.
+  function crackle(x0, y0, x1, y1, amp, seed, step = 9) {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 1) return null;
+    const n = Math.max(2, Math.ceil(len / step)), nx = -(y1 - y0) / len, ny = (x1 - x0) / len;
+    const frame = Math.floor(seed * 24);
+    return d3.line()(d3.range(n + 1).map(k => {
+      const u = k / n, d = u * len;
+      const e = k === 0 ? 0 : amp * (0.5 * Math.sin(d * 0.37 + seed * 43) + 0.3 * Math.sin(d * 0.113 - seed * 29) + 0.9 * (hash(k * 7.13 + frame * 1.37) - 0.5));
+      return [x0 + (x1 - x0) * u + nx * e, y0 + (y1 - y0) * u + ny * e];
+    }));
+  }
+
+  function setVis(sel, o) { sel.attr('opacity', o.toFixed(3)).attr('display', o <= 0.001 ? 'none' : null); }
+
+  // A ring that spreads from a stop when its chord lands.
+  function pulseAt(sel, t, first, last, xOf) {
+    const k = lastStarted(t, first, last);
+    if (k < 0) return sel.attr('opacity', 0);
+    const u = ramp(t, N(k) + 0.35, 0.9);
+    sel.attr('cx', xOf(k)).attr('r', 8 + 70 * u).attr('opacity', (0.75 * (1 - u)).toFixed(3));
+  }
+
+  // Labels on a blade: faint ahead, bright at the current chord, softer behind.
+  const nodeOpacity = (t, reached, until) => (t < reached ? 0.3 : t < until ? 1 : 0.6);
+
+  function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
+  function setNum(sel, who, v, o) {
+    sel.attr('opacity', o.toFixed(3));
+    setText(sel.select('.who').node(), who);
+    setText(sel.select('.val').node(), String(Math.round(v)));
+  }
+
+  // ---------------------------------------------------------------------
+  // Each frame: the drawings at music time t
+  // ---------------------------------------------------------------------
+  function drawArt(t, amb) {
+    const H0 = HOLD_AT();
+    const v1 = shown(t, N(0) - 0.1, N(4) + 0.55, 0.6, 0.7);
+    const v2 = shown(t, N(4) - 0.1, H0 + 0.7, 0.5, 0.8) * (1 - 0.62 * EASE(ramp(t, N(8), 0.9)));
+    const v3 = shown(t, N(8) - 0.05, H0 + 0.7, 0.35, 0.8);
+    const vH = shown(t, H0, Infinity, 0.9);
+    setVis(g1, v1); setVis(g2, v2); setVis(g3, v3); setVis(gH, vH);
+
+    // Phrase 1: the year line, the certificates and the counts.
+    if (v1 > 0) {
+      const yc = steps(t, YEARS, [N(1), N(2), N(3)], 0.9);
+      const on = ramp(t, N(0), 0.6);
+      tlGlow.attr('x2', xYear(yc).toFixed(1)).attr('opacity', (0.75 * on).toFixed(3));
+      tlCore.attr('x2', xYear(yc).toFixed(1)).attr('opacity', on.toFixed(3));
+      tlNodes.attr('fill', d => (t >= N(0) && d <= yc + 0.05 ? HEX.gold : HEX.bg));
+      pulseAt(pulse1, t, 0, 3, k => xYear(YEARS[k]));
+      certs.each(function (d) {
+        const c = centerAt(d.g, t);
+        const appear = d.born ? ramp(t, N(1) + 0.35, 0.9) : ramp(t, N(0) + 1.5, 0.9);
+        const ghost = 1 - 0.78 * EASE(ramp(t, N(3), 1.1));
+        d3.select(this).attr('cx', c.x.toFixed(1)).attr('cy', c.y.toFixed(1))
+          .attr('opacity', (0.8 * appear * ghost).toFixed(3)).attr('stroke-dashoffset', (-amb * 5).toFixed(2));
+      });
+      labEncana.attr('opacity', shown(t, N(0) + 0.8, N(3) + 0.5, 0.6, 0.5).toFixed(3));
+      labGas.attr('opacity', shown(t, N(2) + 0.7, N(3) + 0.5, 0.5, 0.5).toFixed(3));
+      labOvintiv.attr('opacity', shown(t, N(3) + 0.4, Infinity, 0.6).toFixed(3));
+      labUS.attr('opacity', shown(t, N(3) + 0.8, Infinity, 0.6).toFixed(3));
+      labCenovus.attr('opacity', shown(t, N(2) + 0.6, Infinity, 0.6).toFixed(3));
+      labOil.attr('opacity', shown(t, N(2) + 0.9, Infinity, 0.6).toFixed(3));
+      const top = shown(t, N(0) + 1.4, Infinity, 0.7), bottom = shown(t, N(2) + 0.4, Infinity, 0.5);
+      setNum(numMomTop, 'Mom', steps(t, [294, 588, 118], [N(1) + 0.35, N(3) + 0.5], 1.0), top);
+      setNum(numDadTop, 'Dad', steps(t, [188, 376, 75], [N(1) + 0.35, N(3) + 0.5], 1.0), top);
+      setNum(numMomBot, 'Mom', steps(t, [0, 588], [N(2) + 0.4], 1.5), bottom);
+      setNum(numDadBot, 'Dad', steps(t, [0, 376], [N(2) + 0.4], 1.5), bottom);
+      const est = shown(t, N(3) + 1.1, Infinity, 0.5).toFixed(3);
+      estMom.attr('opacity', est);
+      estDad.attr('opacity', est);
+    }
+
+    // Phrase 2: the blue blade lights up one stop per chord.
+    if (v2 > 0) {
+      const reach = [N(4), N(5), N(6), N(7), N(7) + 1.4], until = [F(4), F(5), F(6), F(7), F(7)];
+      const x2 = steps(t, [HILT, ...STOPS, TIP], reach, 0.45);
+      const lit = x2 > HILT + 0.5 ? 1 : 0;
+      b2glow.attr('x2', x2.toFixed(1)).attr('opacity', (lit * (0.85 + 0.1 * Math.sin(amb * 9))).toFixed(3))
+        .attr('stroke-width', (11 + Math.sin(amb * 11) * 0.8).toFixed(2));
+      b2core.attr('x2', x2.toFixed(1)).attr('opacity', lit);
+      nodes2.attr('fill', d => (x2 >= d - 0.5 ? HEX.blue : HEX.bg));
+      labels2.attr('opacity', (d, i) => (i === 4 && t >= N(6) && t < F(6) ? 1 : nodeOpacity(t, reach[i], until[i])));
+      who2.each(function (d) {
+        const c = centerAt(d.g, t);
+        d3.select(this).attr('x', c.x.toFixed(1)).attr('y', (c.y + 76).toFixed(1))
+          .attr('opacity', shown(t, N(4) + 1.3, N(7) + 1.5, 0.5, 0.4).toFixed(3));
+      });
+      pulseAt(pulse2, t, 4, 7, k => STOPS[k - 4]);
+
+      // Chord 5: the stamps land.
+      stamps.each(function (d) {
+        const T = N(4) + d.at, u = ramp(t, T, 0.28);
+        const sc = 1 + 0.5 * (1 - d3.easeCubicIn(u));
+        const o = t < T ? 0 : Math.min(1, u * 3) * (0.95 - 0.35 * ramp(t, T + 0.3, 0.8)) * (1 - ramp(t, F(4) - 0.3, 0.35));
+        d3.select(this).attr('transform', `translate(${d.x},${BLUE_Y}) scale(${sc.toFixed(3)})`).attr('opacity', o.toFixed(3));
+      });
+      shocks.each(function (d) {
+        const u = ramp(t, N(4) + d.at + 0.28, 0.6);
+        d3.select(this).attr('r', (d.r + 34 * u).toFixed(1)).attr('opacity', (u > 0 && u < 1 ? 0.8 * (1 - u) : 0).toFixed(3));
+      });
+
+      // Chord 7: the call goes out.
+      const sv = shown(t, N(6) + 0.9, F(6), 0.3, 0.4);
+      signal.attr('display', sv > 0 ? null : 'none');
+      if (sv > 0) {
+        signal.each(function (k) {
+          const u = ((((t - N(6)) / 1.4 + k / 3) % 1) + 1) % 1, R = 95 + 300 * u;
+          d3.select(this)
+            .attr('d', arcGen({ innerRadius: R, outerRadius: R + 2.4, startAngle: Math.PI / 2 - 0.42, endAngle: Math.PI / 2 + 0.42 }))
+            .attr('opacity', (sv * 0.75 * Math.pow(1 - u, 1.3)).toFixed(3));
+        });
+      }
+
+      // Chord 8: the cheque.
+      const tv = shown(t, N(7) + 2.3, Infinity, 0.5);
+      token.attr('opacity', tv.toFixed(3)).attr('display', tv > 0 ? null : 'none');
+      tokenInner.attr('transform', `scale(${(0.6 + 0.4 * d3.easeBackOut(ramp(t, N(7) + 2.3, 0.5))).toFixed(3)})`);
+    }
+
+    // Phrase 3: the red blade crackles along, one stop per chord.
+    if (v3 > 0) {
+      const reach = [N(8), N(9), N(10), N(11), N(11) + 1.1], until = [F(8), F(9), F(10), F(11), H0];
+      const x3 = steps(t, [HILT, ...STOPS, TIP], reach, 0.45);
+      const flick = 0.82 + 0.18 * Math.sin(amb * 53) * Math.sin(amb * 31);
+      const blade = x3 > HILT + 0.5 ? crackle(HILT, RED_Y, x3, RED_Y, 1.9, amb) : null;
+      b3glow.attr('d', blade).attr('opacity', (0.95 * flick).toFixed(3));
+      b3core.attr('d', blade);
+      const cg = d3.easeCubicOut(ramp(t, N(8) + 0.05, 0.3)) * 30;
+      const guard = new Map([-1, 1].map(s => [s, cg > 0.5 ? crackle(HILT - 9, RED_Y + s * 9, HILT - 9, RED_Y + s * (9 + cg), 1.2, amb + s, 5) : null]));
+      guardGlow.attr('d', s => guard.get(s)).attr('opacity', flick.toFixed(3));
+      guardCore.attr('d', s => guard.get(s));
+      nodes3.attr('fill', d => (x3 >= d - 0.5 ? HEX.red : HEX.bg));
+      labels3.attr('opacity', (d, i) => nodeOpacity(t, reach[i], until[i]));
+      who3.each(function (d) {
+        const c = centerAt(d.g, t);
+        d3.select(this).attr('x', c.x.toFixed(1)).attr('y', (c.y - 82).toFixed(1))
+          .attr('opacity', shown(t, N(8) + 1.2, H0 + 0.2, 0.5, 0.4).toFixed(3));
+      });
+      pulseAt(pulse3, t, 8, 11, k => STOPS[k - 8]);
+
+      // Chord 9: the bond.
+      const bv = shown(t, N(8) + 1.0, F(8) + 0.05, 0.4, 0.3);
+      bond.attr('opacity', bv.toFixed(3)).attr('display', bv > 0 ? null : 'none');
+      if (bv > 0) {
+        bondRing.attr('stroke-dashoffset', (1 - EASE(ramp(t, N(8) + 1.0, 0.7))).toFixed(3));
+        bondSliver.attr('opacity', (0.6 + 0.4 * Math.sin(amb * 6)).toFixed(3));
+      }
+    }
+
+    // Mom's 30 days: from chord 11 to the end, the ring follows her Cenovus shares.
+    const dv = shown(t, N(10) + 0.25, Infinity, 0.4);
+    setVis(gDays, dv * (1 - 0.6 * ramp(t, H0, 0.6) + 0.6 * ramp(t, STEP_AT(3), 0.6)));
+    if (dv > 0) {
+      const c = centerAt(momC, t);
+      gDays.attr('transform', `translate(${c.x.toFixed(1)},${c.y.toFixed(1)})`);
+      const again = t >= STEP_AT(3) - 0.2;
+      daySegs.attr('opacity', (d, k) => (0.16 + 0.84 * (again ? ramp(t, STEP_AT(3) + k * 0.05, 0.12)
+                                                              : ramp(t, N(10) + 0.35 + k * 0.075, 0.12))).toFixed(3));
+      daysText.attr('opacity', shown(t, N(10) + 0.5, H0 + 0.3, 0.4, 0.4).toFixed(3));
+    }
+
+    // Your steps from here.
+    if (vH > 0) {
+      const y2 = (200 + 590 * EASE(ramp(t, H0 + 0.3, 1.6))).toFixed(1);
+      route.attr('y2', y2);
+      routeGlow.attr('y2', y2);
+      halos.attr('opacity', (d, i) => (0.2 + 0.8 * ramp(t, STEP_AT(i + 1), 0.6)).toFixed(3));
+      const q = EASE(ramp(t, STEP_AT(0) + 0.1, 1.7));
+      const a80 = arcGen({ innerRadius: 82, outerRadius: 94, startAngle: 0, endAngle: TAU * 0.8 * q });
+      doneArc.attr('d', a80);
+      doneArcGlow.attr('d', a80);
+      setText(donePct.node(), Math.round(80 * q) + '%');
+      doneG.attr('opacity', shown(t, STEP_AT(0), Infinity, 0.5).toFixed(3));
+    }
+
+    // The twelve beats, top right.
+    const bv = shown(t, N(0) - 0.2, H0 + 0.8, 0.5, 0.8);
+    beats.attr('display', bv > 0 ? null : 'none');
+    if (bv > 0) {
+      beats.each(function (i) {
+        const cur = t >= N(i) && t < F(i), past = t >= F(i);
+        d3.select(this).attr('opacity', bv.toFixed(3)).attr('fill', cur || past ? beatCol(i) : HEX.bg)
+          .attr('fill-opacity', cur ? 1 : 0.5).attr('r', cur ? 6.5 : 4.5);
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Each frame: the words at music time t
+  // ---------------------------------------------------------------------
+  function drawHud(t) {
+    const H0 = HOLD_AT();
+    const hv = [shown(t, N(0) - 0.15, N(4), 0.6, 0.45), shown(t, N(4), N(8), 0.45, 0.4),
+                shown(t, N(8), H0 + 0.1, 0.45, 0.5), shown(t, H0 + 0.2, Infinity, 0.8)];
+    heads.each(function (d, i) { op(this, hv[i]); });
+    const yv = shown(t, N(0) - 0.05, N(4) + 0.1, 0.5, 0.5);
+    op(yearEl, yv);
+    if (yv > 0) setText(yearEl, String(Math.round(steps(t, YEARS, [N(1), N(2), N(3)], 0.9))));
+    caps.each(function (i) {
+      const o = shown(t, N(i), F(i) + 0.05, 0.38, 0.3);
+      op(this, o);
+      if (o > 0) this.style.transform = `translateY(${((1 - d3.easeCubicOut(ramp(t, N(i), 0.6))) * 14).toFixed(2)}px)`;
+    });
+    capItems.each(function (d) { this.style.opacity = ramp(t, N(d.beat) + 0.1 + d.j * 0.12, 0.35).toFixed(3); });
+    ticks.attr('stroke-dashoffset', d => (1 - EASE(ramp(t, N(d.beat) + 0.5 + d.j * 0.28, 0.4))).toFixed(3));
+    holds.each(function () {
+      const k = +this.dataset.step, o = shown(t, STEP_AT(k), Infinity, 0.7);
+      op(this, o);
+      if (o > 0) this.style.transform = `translateY(${((1 - d3.easeCubicOut(ramp(t, STEP_AT(k), 0.8))) * 12).toFixed(2)}px)`;
+    });
+    doneItems.each(function (d, j) { this.style.opacity = ramp(t, STEP_AT(0) + 0.5 + j * 0.3, 0.5).toFixed(3); });
+  }
+
+
+  // ---------------------------------------------------------------------
+  // Start, the music and the end
+  // ---------------------------------------------------------------------
+  const music = document.getElementById('music');
+  const intro = document.getElementById('intro');
+  const startButton = document.getElementById('start');
+  const againButton = document.getElementById('again');
+  const pauseButton = document.getElementById('pause');
+  const scrub = document.getElementById('scrub');
+  const scrubRange = scrub.querySelector('input');
+  const scrubTime = scrub.querySelector('.time');
+  let scrubbing = false;
+  const message = document.getElementById('message');
+  const params = new URLSearchParams(location.search);
+  let mode = params.has('t') ? 'frozen' : 'idle';   // idle, playing, paused, ended, or frozen (for ?t=)
+  const frozenAt = parseFloat(params.get('t')) || 0;
+  let taps = [];
+
+  function now() {
+    if (mode === 'frozen') return frozenAt;
+    if (mode === 'idle') return -1;
+    return music.currentTime;
+  }
+  function setUi() {
+    intro.classList.toggle('gone', mode !== 'idle');
+    if (mode === 'frozen') intro.style.display = 'none';
+    const atEnd = mode === 'frozen' && FADE_OUT_SECONDS != null && frozenAt >= HOLD_AT() + HOLD_SECONDS + FADE_OUT_SECONDS;
+    againButton.hidden = !(mode === 'ended' || atEnd);
+    pauseButton.hidden = !(mode === 'playing' || mode === 'paused');
+    pauseButton.textContent = mode === 'paused' ? 'Resume' : 'Pause';
+    pauseButton.classList.toggle('on', mode === 'paused');
+    scrub.hidden = !(mode === 'playing' || mode === 'paused' || mode === 'ended');
+    scrub.classList.toggle('on', mode !== 'playing');
+  }
+  // Scrub bar: everything on screen is drawn from the music's clock, so
+  // moving the music's position moves the whole show.
+  const SHOW_END = () => FADE_OUT_SECONDS == null
+    ? (music.duration || HOLD_AT() + HOLD_SECONDS)
+    : HOLD_AT() + HOLD_SECONDS + FADE_OUT_SECONDS;
+  const PART_AT = [() => 0, () => N(4) - 0.4, () => N(8) - 0.4, () => HOLD_AT()];
+  const mmss = x => { x = Math.max(0, x); return Math.floor(x / 60) + ':' + String(Math.floor(x % 60)).padStart(2, '0'); };
+  function seek(t) {
+    const end = SHOW_END();
+    t = Math.max(0, Math.min(t, end - 0.05));
+    music.currentTime = t;
+    const fadeFrom = HOLD_AT() + HOLD_SECONDS;
+    music.volume = FADE_OUT_SECONDS != null && t > fadeFrom ? clamp01(1 - (t - fadeFrom) / FADE_OUT_SECONDS) : 1;
+    if (mode === 'ended') { mode = 'paused'; setUi(); }
+  }
+  function updateScrub() {
+    if (scrub.hidden) return;
+    const end = SHOW_END();
+    if (+scrubRange.max !== end) scrubRange.max = end;
+    if (!scrubbing) scrubRange.value = music.currentTime;
+    setText(scrubTime, mmss(+scrubRange.value) + ' / ' + mmss(end));
+  }
+  scrubRange.addEventListener('input', () => { scrubbing = true; seek(+scrubRange.value); });
+  scrubRange.addEventListener('change', () => { scrubbing = false; scrubRange.blur(); });
+  scrub.querySelectorAll('.jump').forEach(b => b.addEventListener('click', e => {
+    e.currentTarget.blur();
+    seek(PART_AT[+b.dataset.part]());
+  }));
+  // Pause freezes the music, and with it everything on screen, because
+  // all the drawing follows the music's clock. Space bar does the same.
+  function togglePause() {
+    if (mode === 'playing') {
+      music.pause();
+      mode = 'paused';
+      setUi();
+    } else if (mode === 'paused') {
+      mode = 'playing';
+      setUi();
+      music.play().catch(err => {
+        mode = 'paused';
+        setUi();
+        message.textContent = "The music didn't resume: " + err.message;
+        message.hidden = false;
+      });
+    }
+  }
+  function start() {
+    taps = [];
+    message.hidden = true;
+    music.volume = 1;
+    music.currentTime = 0;
+    mode = 'playing';
+    setUi();
+    music.play().catch(err => {
+      mode = 'idle';
+      setUi();
+      message.textContent = "The music didn't start: " + err.message;
+      message.hidden = false;
+    });
+  }
+  function finish() { mode = 'ended'; setUi(); }
+
+  // After the twelfth chord the music plays on for HOLD_SECONDS, then fades
+  // out over FADE_OUT_SECONDS and stops.
+  function audioTick() {
+    if (mode !== 'playing' || FADE_OUT_SECONDS == null) return;
+    const t = music.currentTime, end = HOLD_AT() + HOLD_SECONDS;
+    if (t >= end + FADE_OUT_SECONDS) {
+      music.pause();
+      music.volume = 1;
+      finish();
+    } else {
+      music.volume = t > end ? clamp01(1 - (t - end) / FADE_OUT_SECONDS) : 1;
+    }
+  }
+  setInterval(audioTick, 100);   // keeps working when the tab is in the background
+
+  music.addEventListener('ended', () => { if (mode === 'playing') finish(); });
+  music.addEventListener('error', () => {
+    message.textContent = "Can't load the music file star-wars-force-awakens-trailer.m4a. It needs to be in the same folder as this page.";
+    message.hidden = false;
+  });
+  startButton.addEventListener('click', e => { e.currentTarget.blur(); start(); });
+  againButton.addEventListener('click', e => { e.currentTarget.blur(); start(); });
+  pauseButton.addEventListener('click', e => { e.currentTarget.blur(); togglePause(); });
+  // Space bar pauses and resumes. It's caught on both key down and key up
+  // so it can't also press whichever button last had focus.
+  document.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (mode !== 'playing' && mode !== 'paused') return;
+    e.preventDefault();
+    if (!e.repeat) togglePause();
+  });
+  document.addEventListener('keyup', e => {
+    if (e.code === 'Space' && (mode === 'playing' || mode === 'paused')) e.preventDefault();
+  });
+
+  // Tap helper: press T on each chord. Every tap logs the time; after
+  // twelve taps the console prints a list ready to paste into NOTES.
+  document.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() !== TAP_KEY || e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = Math.round(music.currentTime * 100) / 100;
+    taps.push(t);
+    console.log(`Tap ${taps.length}: ${t.toFixed(2)} s`);
+    if (taps.length === NOTES.length) {
+      const lines = taps.map((on, i) => {
+        const off = i + 1 < taps.length ? Math.max(on, taps[i + 1] - 0.2) : on + 4;
+        return `    [${on.toFixed(2).padStart(5)}, ${off.toFixed(2).padStart(5)}],`;
+      });
+      console.log('Twelve taps. These start times are yours; the end times are 0.2 s before the next tap, so check them:\n' + lines.join('\n'));
+    }
+  });
+
+  // One loop draws everything from the music's clock.
+  function render(t, amb) {
+    drawSky(t, amb);
+    drawDots(t, amb);
+    drawArt(t, amb);
+    drawHud(t);
+  }
+  let failed = false;
+  fit();
+  setUi();
+  window.addEventListener('resize', fit);
+  d3.timer(() => {
+    try {
+      render(now(), performance.now() / 1000);
+      audioTick();
+      updateScrub();
+    } catch (err) {
+      if (!failed) { failed = true; console.error(err); }
+    }
+  });
+</script>
+</body>
+</html>
